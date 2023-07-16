@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>물체의 낙하 가속도 계산기</title>
+    <style>
+        #soundLevelContainer {
+            display: none;
+            text-indent: -9999px;
+        }
+
+        #calculateButton {
+            display: none;
+            text-indent: -9999px;
+        }
+    </style>
+    <script>
+        var startThreshold = 50; // 작동 시작 음량 임계값 설정
+        var stopThreshold = 80; // 작동 중지 음량 임계값 설정
+        var startTime = null; // 타이머 시작 시간 변수
+        var stopTime = null; // 타이머 중지 시간 변수
+        var elapsedTime = 0; // 경과 시간 변수
+        var isSoundLevelChecked = false; // 음량 측정 여부 변수
+
+        function calculateAcceleration() {
+            var time = elapsedTime / 1000; // 밀리초를 초로 변환하여 시간 계산
+            var distance = parseFloat(document.getElementById("distance").value);
+
+            // 가속도 계산: 가속도 = (2 * 거리) / (시간^2)
+            var acceleration = (2 * distance) / Math.pow(time, 2);
+            acceleration = Math.round(acceleration * 100) / 100; // 소수 둘째 자리에서 반올림
+
+            // 결과 출력
+            document.getElementById("result").innerHTML = "물체의 자유 낙하 가속도 : " + acceleration + "m/s<sup>2</sup>";
+        }
+
+        function startTimer() {
+            if (startTime === null) {
+                // 물체와 지면 사이의 거리가 입력되었는지 확인
+                var distance = parseFloat(document.getElementById("distance").value);
+                if (isNaN(distance)) {
+                    alert("물체와 지면 사이의 거리가 입력되지 않았습니다!"); // 거리가 입력되지 않았을 때 알림창 표시
+                    return; // 함수 종료
+                }
+
+                // 음량 체크 시작
+                if (!isSoundLevelChecked) {
+                    document.getElementById("soundLevelContainer").style.display = "block"; // 음량 부분 표시
+                    checkVolume();
+                    isSoundLevelChecked = true;
+                    alert("50dB 이상일 때 시간 기록이 시작되고 80dB 이상일 때 시간 기록이 중지됩니다!");
+                }
+
+                // 음량이 50dB 이상인지 체크
+                var soundLevel = parseFloat(document.getElementById("soundLevel").value);
+                if (soundLevel >= startThreshold) {
+                    startTime = new Date().getTime(); // 타이머 시작 시간 기록
+                }
+            }
+        }
+
+        function stopTimer() {
+            if (startTime !== null && stopTime === null) {
+                // 음량이 80dB 이상인지 체크
+                var soundLevel = parseFloat(document.getElementById("soundLevel").value);
+                if (soundLevel >= stopThreshold) {
+                    stopTime = new Date().getTime(); // 타이머 중지 시간 기록
+                    calculateAcceleration();
+                    alert("시간 기록이 중지되었습니다!"); // 알림창 표시
+                }
+            }
+        }
+
+        function checkSoundLevel() {
+            var soundLevel = parseFloat(document.getElementById("soundLevel").value);
+
+            if (startTime !== null && stopTime === null && soundLevel >= stopThreshold) {
+                stopTimer();
+            }
+
+            requestAnimationFrame(checkSoundLevel);
+        }
+
+        function calculateAndShowAcceleration() {
+            calculateAcceleration();
+            document.getElementById("calculateButton").disabled = true; // 계산 버튼 비활성화
+        }
+
+        function checkDistanceInput() {
+            var distance = parseFloat(document.getElementById("distance").value);
+            var startButton = document.getElementById("startButton");
+
+            if (isNaN(distance)) {
+                startButton.disabled = true;
+            } else {
+                startButton.disabled = false;
+            }
+        }
+
+        function checkVolume() {
+            var constraints = { audio: true };
+
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(function (mediaStream) {
+                    var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    var analyser = audioCtx.createAnalyser();
+
+                    var source = audioCtx.createMediaStreamSource(mediaStream);
+                    source.connect(analyser);
+
+                    document.getElementById("soundLevelContainer").style.display = "block"; // 음량 부분 표시
+
+                    checkSoundLevel();
+                })
+                .catch(function (err) {
+                    console.log("Error: " + err);
+                });
+        }
+
+        function updateElapsedTime() {
+            if (startTime !== null && stopTime === null) {
+                var currentTime = new Date().getTime();
+                elapsedTime = currentTime - startTime;
+                var seconds = elapsedTime / 1000; // 밀리초를 초로 변환
+                seconds = seconds.toFixed(2); // 소수점 둘째 자리까지 표시
+                document.getElementById("elapsedTime").textContent = seconds; // 초 단위로 표시
+            }
+            requestAnimationFrame(updateElapsedTime);
+        }
+    </script>
+</head>
+<body>
+    <h2>물체의 자유 낙하 운동 가속도 계산기</h2>
+    <label for="distance">물체와 지면 사이의 거리 Δh :</label>
+    <input type="number" id="distance" step="any" required> m<br><br>
+    <div id="time">물체의 낙하 운동 시간 Δt : <span id="elapsedTime">0</span> s</div><br>
+    <button onclick="startTimer()" id="startButton">타이머 시작</button><br><br>
+    <div id="result"></div>
+    <button id="calculateButton" onclick="calculateAndShowAcceleration()" disabled>낙하 시간 기록 후 계산하기</button><br><br>
+    <div id="soundLevelContainer">
+        <label for="soundLevel">음량:</label>
+        <input type="number" id="soundLevel" step="any" readonly><br><br>
+    </div>
+    <br>
+    <script>
+        var audioCtx = null;
+        var analyser = null;
+
+        function checkVolume() {
+            var constraints = { audio: true };
+
+            function getAverageVolume() {
+                var dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+                var values = 0;
+                var length = dataArray.length;
+                for (var i = 0; i < length; i++) {
+                    values += dataArray[i];
+                }
+                return values / length;
+            }
+
+            function updateSoundLevel() {
+                var soundLevel = getAverageVolume();
+                document.getElementById("soundLevel").value = soundLevel;
+
+                if (startTime === null && soundLevel >= startThreshold) {
+                    startTimer();
+                }
+
+                if (startTime !== null && stopTime === null && soundLevel >= stopThreshold) {
+                    stopTimer();
+                }
+
+                requestAnimationFrame(updateSoundLevel);
+            }
+
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(function (mediaStream) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioCtx.createAnalyser();
+
+                    var source = audioCtx.createMediaStreamSource(mediaStream);
+                    source.connect(analyser);
+
+                    requestAnimationFrame(updateSoundLevel);
+                })
+                .catch(function (err) {
+                    console.log("Error: " + err);
+                });
+        }
+
+        // distance 입력값 변경 시 checkDistanceInput 호출
+        document.getElementById("distance").addEventListener("input", checkDistanceInput);
+
+        checkVolume();
+        updateElapsedTime();
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
